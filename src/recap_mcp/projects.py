@@ -538,6 +538,6 @@ def read_rcs_header(path: Path) -> dict[str, Any]:
         "translation": [round(v, 9) for v in d[0:3]],
         "local_data_bounds": {"min": [round(v, 9) for v in d[18:21]], "max": [round(v, 9) for v in d[21:24]]},
         "note": ("Cabeçalho lido por engenharia reversa (assinatura ADOCT). num_points, guid e translation "
-                 "conferem com o manifesto .rcp nos testes com DeCap 27.0.1.242. Os pontos não são lidos; "
-                 "leitura completa de RCS exige o Reality Solutions SDK da Autodesk."),
+                 "conferem com o manifesto .rcp nos testes com DeCap 27.0.1.242. Para ver os pontos, use "
+                 "open_cloud."),
     }

@@ -1,6 +1,6 @@
 # MCP ReCap
 
-Servidor MCP próprio para o **Autodesk ReCap Pro no Windows**. Permite que agentes de IA (Claude, Antigravity, Codex/ChatGPT) consultem projetos do ReCap e criem projetos novos com o **DeCap.exe**, a ferramenta de linha de comando que acompanha o ReCap.
+Servidor MCP próprio para o **Autodesk ReCap Pro no Windows**. Permite que agentes de IA (Claude, Antigravity, Codex/ChatGPT) **vejam e naveguem na nuvem de pontos**, consultem projetos do ReCap e criem projetos novos com o **DeCap.exe**, a ferramenta de linha de comando que acompanha o ReCap.
 
 Testado com **ReCap Pro 2027 (27.0.1.242)** e DeCap 27.0.1.242 no Windows 11, Python 3.11 a 3.13 e SDK oficial `mcp` 1.30.
 
@@ -29,12 +29,32 @@ Para atualizar, envie a mesma mensagem: o passo a passo faz `git pull` quando o 
 | Faz | Não faz |
 |---|---|
 | Detecta a instalação, a versão e as opções do DeCap disponíveis | Não controla a interface do ReCap (o DeCap não é uma API de automação da interface) |
-| Lê metadados de projetos `.rcp` (manifesto XML) e o cabeçalho de `.rcs` | Não lê os pontos de `.rcs` (exige o Reality Solutions SDK, distribuído pela ADN) |
+| Lê os pontos de `.rcp`/`.rcs` e gera imagens: perspectiva, planta e corte | Não lê normais, classificação, regiões nem as imagens panorâmicas (RealView) |
+| Lê metadados de projetos `.rcp` (manifesto XML) e o cabeçalho de `.rcs` | Não mede sozinho: `pick_point` dá as coordenadas e o agente calcula |
 | Cria projetos **novos** a partir de scans, com opções do DeCap | Não edita nem sobrescreve projetos existentes |
 | Acompanha, lista e cancela as importações que ele mesmo iniciou | Não executa comandos arbitrários de shell ou código |
 | Abre um projeto existente no ReCap, quando chamado explicitamente | Não usa a Reality Capture API na nuvem; nenhum dado sai da máquina |
 
 ## Ferramentas
+
+### Ver e navegar na nuvem
+
+Os pontos são lidos direto do `.rcp`/`.rcs`. O ReCap não precisa estar aberto, nada é exportado e nenhum outro programa é instalado. Cada ferramenta devolve uma imagem e um JSON com a câmera e as coordenadas.
+
+| Ferramenta | Para quê |
+|---|---|
+| `open_cloud` | Abre um `.rcp` ou `.rcs`; devolve limites, número de pontos e a vista geral |
+| `view_cloud` | Perspectiva a partir de uma posição, com rumo e inclinação ou um ponto para olhar |
+| `move_camera` | Anda (frente, lado, cima) e gira em relação à posição atual |
+| `orbit_camera` | Gira em torno de um ponto e aproxima ou afasta |
+| `go_to_pixel` | Leva a câmera até o que aparece num pixel da última imagem |
+| `pick_point` | Coordenadas X, Y, Z do ponto desenhado num pixel |
+| `plan_view` | Planta de uma faixa de cotas, com X e Y nas bordas |
+| `section_view` | Corte vertical entre dois pontos, com distância e cota nas bordas |
+
+Testado numa nuvem unificada de 1,26 bilhão de pontos (29 GB): 1 a 2 s por imagem. Num projeto de 98 scans e 4,1 bilhões de pontos: 3 a 7 s. Como funciona e o que foi conferido: [docs/formato-rcs.md](docs/formato-rcs.md).
+
+### Projetos e importação
 
 | Ferramenta | Para quê |
 |---|---|
@@ -82,6 +102,11 @@ uv --directory <pasta do mcp-recap> run mcp-recap
 cliente MCP ──STDIO──> mcp-recap (Python, FastMCP)
                           ├─ installation.py  descoberta do ReCap, decap --help/--version/--checkLicense
                           ├─ projects.py      leitura do .rcp (ZIP+XML em memória) e do cabeçalho .rcs
+                          ├─ rcs.py           leitura dos pontos do .rcs (octree ADOCT 3.x)
+                          ├─ scene.py         projeto com vários scans, amostragem por orçamento e cache
+                          ├─ render.py        imagem em numpy + Pillow (z-buffer, sombreamento por profundidade)
+                          ├─ viewer.py        câmera, perspectiva, planta, corte e apontar pixel
+                          ├─ view_tools.py    ferramentas MCP de visualização
                           ├─ decap.py         validação e montagem dos argumentos do DeCap
                           ├─ jobs.py          processos assíncronos, log, verificação e persistência
                           └─ recap_app.py     abertura de projeto na interface do ReCap

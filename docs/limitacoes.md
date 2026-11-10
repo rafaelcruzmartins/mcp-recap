@@ -14,9 +14,9 @@ Outras versões do ReCap devem funcionar enquanto o DeCap mantiver `--importWith
 
 ## O que este servidor não promete
 
-* **Leitura de pontos de `.rcs`**: o `.rcs` é um octree binário proprietário. Só o cabeçalho é lido (assinatura `ADOCT`, número de pontos, identificador, translação e limites locais). Esses campos foram conferidos contra o manifesto `.rcp` em projetos gerados pelo DeCap 27.0.1.242, mas o formato não é documentado pela Autodesk.
+* **Leitura de pontos de `.rcs`**: feita por este servidor, sem SDK, para o formato `ADOCT` 3.x. O formato não é documentado pela Autodesk; a estrutura, as conferências e o que fica de fora (normais, classificação, regiões, panoramas) estão em [formato-rcs.md](formato-rcs.md). Um arquivo cuja tabela de folhas não confere é recusado, em vez de mostrar dados errados.
 * **Escrita de `.rcp`/`.rcs`**: nenhuma; projetos só são criados pelo DeCap.
-* **Reality Solutions SDK**: a [documentação oficial](https://help.autodesk.com/cloudhelp/ENU/Reality-Capture/files/Product_Overview/recap_sdk.html) informa que ele lê e grava RCP/RCS, mas é obtido pela Autodesk Developer Network (ADN Standard/Professional) e não acompanha o ReCap. Não estava disponível nesta máquina; por isso não há integração.
+* **Reality Solutions SDK**: a [documentação oficial](https://help.autodesk.com/cloudhelp/ENU/Reality-Capture/files/Product_Overview/recap_sdk.html) informa que ele lê e grava RCP/RCS, mas é obtido pela Autodesk Developer Network (ADN Standard/Professional) e não acompanha o ReCap. Não estava disponível nesta máquina e não é necessário para ver a nuvem.
 * **Controle da interface**: o DeCap cria projetos; não registra scans, não mede, não exporta e não manipula a interface. `open_project_in_recap` apenas inicia o ReCap com o arquivo.
 * **Reality Capture API na nuvem**: não é usada.
 * **Licença**: o servidor não ativa nem contorna licenças. `--checkLicense` é a única verificação disponível.
@@ -53,7 +53,7 @@ Outras versões do ReCap devem funcionar enquanto o DeCap mantiver `--importWith
 * **Destino sempre novo**: o servidor nunca sobrescreve nem apaga projetos. Arquivos parciais de jobs cancelados ou com falha ficam no destino para inspeção.
 * **Subprocessos com lista de argumentos, sem `shell=True`**: nenhuma ferramenta executa shell ou código arbitrário.
 * **Leitura do `.rcp` em memória**: o ZIP nunca é extraído para disco (sem risco de *path traversal*); limites de 512 MB por arquivo, 2000 entradas, 32 MB de manifesto e razão de compressão; DTD e entidades XML são recusadas.
-* **Nenhuma enumeração de pontos**: respostas trazem apenas metadados e contagens.
+* **Pontos só como imagem**: as ferramentas de visualização devolvem imagens e coordenadas de pontos apontados; nenhuma lista de pontos é devolvida.
 * **Jobs**: até 2 importações simultâneas (`RECAP_MCP_MAX_JOBS`). Ao encerrar normalmente, o servidor termina os processos DeCap que iniciou (status `cancelled`). Se o servidor cair, os jobs ativos são marcados `interrupted` no próximo início; o processo pode ter seguido sem supervisão e não é encerrado nem cancelável.
 * **Ferramentas síncronas em thread**: chamadas lentas (licença, abertura do ReCap) não bloqueiam outras requisições.
 

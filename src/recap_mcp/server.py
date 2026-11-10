@@ -21,7 +21,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
-from . import __version__, errors, installation, projects, recap_app
+from . import __version__, errors, installation, projects, recap_app, view_tools
 from .decap import (
     INPUT_UNITS,
     LISTED_INPUT_EXTENSIONS,
@@ -122,8 +122,13 @@ def build_server(ctx: Context | None = None) -> tuple[FastMCP, Context]:
     mcp = FastMCP(
         "recap",
         instructions=(
-            "Ferramentas para Autodesk ReCap no Windows. Comece por check_recap_installation. "
-            "Leitura: find_projects, read_project, list_scans (metadados; nenhum ponto é devolvido). "
+            "Ferramentas para Autodesk ReCap no Windows. "
+            "VER E NAVEGAR NA NUVEM (lê os pontos direto do .rcp/.rcs; o ReCap não precisa estar aberto): "
+            "open_cloud abre e mostra a vista geral; view_cloud posiciona a câmera; move_camera anda e gira; "
+            "orbit_camera gira em torno de um ponto e aproxima; go_to_pixel vai até o que aparece num pixel; "
+            "pick_point dá as coordenadas de um pixel; plan_view e section_view geram planta e corte com "
+            "coordenadas nas bordas. Coordenadas em metros, Z para cima, yaw 0 = norte (+Y). "
+            "Metadados: find_projects, read_project, list_scans. Instalação: check_recap_installation. "
             "Importação: import_scans cria SEMPRE um projeto novo via DeCap.exe e devolve um job_id; "
             "acompanhe com get_job_status. Use caminhos absolutos."
         ),
@@ -149,7 +154,8 @@ def build_server(ctx: Context | None = None) -> tuple[FastMCP, Context]:
             "input_units": list(INPUT_UNITS),
             "limitations": [
                 "Leitura de RCP: somente metadados do manifesto XML; formato não documentado pela Autodesk.",
-                "Leitura de RCS: somente cabeçalho; pontos não são decodificados (exige Reality Solutions SDK).",
+                ("Leitura de RCS: pontos lidos direto do arquivo (formato ADOCT 3.x, levantado por análise; ver "
+                 "docs/formato-rcs.md). Normais, classificação e regiões não são interpretadas."),
                 "DeCap cria projetos novos; não edita projetos existentes nem controla a interface do ReCap.",
                 "A Reality Capture API na nuvem não é usada; nenhum dado sai da máquina.",
             ],
@@ -283,6 +289,7 @@ def build_server(ctx: Context | None = None) -> tuple[FastMCP, Context]:
         return recap_app.open_project(inst.recap_exe, p, wait_for_load_seconds=wait_for_load_seconds,
                                       allow_second_instance=allow_second_instance)
 
+    ctx.viewer = view_tools.register(mcp, _tool)
     return mcp, ctx
 
 
@@ -297,7 +304,8 @@ def _sdk_status(inst: installation.Installation) -> dict[str, Any]:
         "available": False,
         "files_found_in_install_dir": found,
         "note": ("Integração com o Reality Solutions SDK não implementada: o SDK é obtido pela Autodesk Developer "
-                 "Network (ADN) e não acompanha o ReCap. Sem ele, os pontos de arquivos .rcs não são lidos."),
+                 "Network (ADN) e não acompanha o ReCap. Não é necessário: os pontos de .rcs são lidos "
+                 "diretamente por este servidor (open_cloud)."),
     }
 
 

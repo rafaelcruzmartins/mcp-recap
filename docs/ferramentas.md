@@ -29,6 +29,43 @@ Erros de **esquema** (parâmetro obrigatório ausente, tipo errado) são rejeita
 
 ---
 
+## Ver e navegar na nuvem
+
+Coordenadas do projeto em metros, Z para cima. `yaw` é o rumo em graus (0 = norte, +Y; 90 = leste, +X). `pitch` é a inclinação (negativa olha para baixo). Pixels contam a partir do canto superior esquerdo da imagem.
+
+O servidor guarda uma nuvem aberta, uma câmera e a última imagem. `pick_point` e `go_to_pixel` valem para a última imagem, de qualquer tipo.
+
+Parâmetros comuns às ferramentas de imagem: `width` (320 a 1600 px), `height` (240 a 1200 px, só nas perspectivas), `color_by` (`auto`, `rgb`, `intensity`, `elevation`), `max_points` (pontos lidos do disco por imagem), `point_scale` e `pixel_grid` (desenha a grade de pixels sobre a imagem).
+
+| Ferramenta | Parâmetros próprios |
+|---|---|
+| `open_cloud` | `path` (`.rcp` ou `.rcs`) |
+| `view_cloud` | `position` [x, y, z], `look_at` [x, y, z], `yaw`, `pitch`, `fov`, `reset` |
+| `move_camera` | `forward`, `right`, `up` (m); `turn_right`, `turn_up` (graus) |
+| `orbit_camera` | `right`, `up` (graus), `zoom`, `pivot` [x, y, z] (padrão: centro da última imagem) |
+| `go_to_pixel` | `px`, `py`, `stop_distance` (m), `eye_height` (m acima do ponto, olhando na horizontal) |
+| `pick_point` | `px`, `py` |
+| `plan_view` | `center` [x, y], `width_m`, `height_m`, `z_min`, `z_max` |
+| `section_view` | `p1` [x, y], `p2` [x, y], `thickness` (m), `z_min`, `z_max` |
+
+Resposta das perspectivas (além da imagem):
+
+```json
+{"ok": true, "view": "perspective",
+ "camera": {"position": [360322.0, 7395951.0, 763.2], "yaw": 55.0, "heading": "NE", "pitch": 0.0, "fov": 75.0},
+ "image_size": [1024, 768], "color": "rgb",
+ "center_point": {"xyz": [360343.448, 7395965.994, 763.18], "distance": 26.17},
+ "points_drawn": 999333, "points_read": 2000000, "leaves_visible": 3666, "empty": false,
+ "ms": {"read": 233, "draw": 1525}}
+```
+
+Roteiro típico: `open_cloud`; `section_view` atravessando o prédio para achar as cotas dos pisos; `plan_view` com uma faixa fina acima do piso para ver paredes e pilares; `go_to_pixel` com `eye_height: 1.6` num ponto do piso para ficar de pé ali; `move_camera` para andar.
+
+Limites: a imagem é uma amostra dos pontos (`max_points`), não a nuvem inteira; não há oclusão além do ponto mais próximo por pixel; `center_point` e `pick_point` devolvem o ponto desenhado, com a precisão da amostra.
+
+---
+
+
 ## check_recap_installation
 
 | Parâmetro | Tipo | Padrão | Descrição |
@@ -57,7 +94,7 @@ Não segue links simbólicos nem junções. Para em 20 000 pastas visitadas. Pas
 
 **`.rcp`**: `project_id`, `schema_version`, `save_history` (aplicativo, versão, data; sem usuário), `scan_count`, `total_points`, `coordinate_system`, `geo_reference_origin`, `global_transformation`, `project_bounds` (caixa de `Default Map`; atributos omitidos pelo ReCap são tratados como 0 e listados em `omitted_attributes_as_zero`), `display_unit.unit_type_raw` (código bruto; ver limitações), contagens de medições, regiões, caixas-limite e vistas, pasta Support e `warnings`.
 
-**`.rcs`**: somente o cabeçalho: `format_version`, `num_points`, `guid`, `translation` e `local_data_bounds`. Nenhum ponto é lido.
+**`.rcs`**: somente o cabeçalho: `format_version`, `num_points`, `guid`, `translation` e `local_data_bounds`. Para ver os pontos, use `open_cloud`.
 
 Exemplo:
 
