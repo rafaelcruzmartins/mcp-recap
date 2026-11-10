@@ -41,6 +41,10 @@ CANCEL_WAIT_S = 15
 ANSI_ENCODING = "mbcs" if os.name == "nt" else "cp1252"
 
 
+class TaskCancelled(Exception):
+    """Levantada por uma tarefa interna quando o cancelamento é pedido."""
+
+
 def _now() -> str:
     return _dt.datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -75,6 +79,7 @@ class JobManager:
         self._procs: dict[str, subprocess.Popen] = {}
         self._threads: dict[str, threading.Thread] = {}
         self._cancel_requested: set[str] = set()
+        self._tasks: dict[str, threading.Event] = {}
         self._shutting_down = False
         if project_reader is None or scan_lister is None:
             from .projects import list_scans, read_project
@@ -108,11 +113,14 @@ class JobManager:
                 job["status"] = "interrupted"
                 job["finished_at"] = None
                 job["interrupted_at"] = _now()
-                job["failure_reasons"] = [(
-                    "O servidor MCP foi reiniciado enquanto o job estava ativo. O processo DeCap "
-                    f"(PID {job.get('pid')}) pode ter continuado ou terminado sem supervisão; confira os "
-                    "arquivos de saída antes de reutilizar o destino."
-                )]
+                if job.get("kind") == "import_scans":
+                    job["failure_reasons"] = [(
+                        "O servidor MCP foi reiniciado enquanto o job estava ativo. O processo DeCap "
+                        f"(PID {job.get('pid')}) pode ter continuado ou terminado sem supervisão; confira os "
+                        "arquivos de saída antes de reutilizar o destino."
+                    )]
+                else:
+                    job["failure_reasons"] = ["O servidor MCP foi reiniciado durante a tarefa; repita a operação."]
                 self._persist(job)
             self._jobs[job["job_id"]] = job
 
@@ -324,17 +332,88 @@ class JobManager:
         lines = [ln for ln in text.split("\n") if ln.strip() and set(ln.strip()) != {"-"}]
         return lines[-max_lines:], size
 
+    def _controlled(self, job_id: str) -> bool:
+        return job_id in self._procs or job_id in self._tasks
+
     def _public(self, job: dict[str, Any]) -> dict[str, Any]:
         out = {k: v for k, v in job.items() if k != "plan"}
-        out["output"] = {
-            "expected_rcp": job["plan"]["expected_rcp"],
-            "expected_support_folder": job["plan"]["expected_support_folder"],
-        }
-        out["inputs"] = job["plan"]["inputs"]
-        out["options"] = job["plan"]["options"]
-        out["warnings"] = job["plan"].get("warnings", [])
-        out["controlled_by_this_server"] = job["job_id"] in self._procs
+        plan = job.get("plan") or {}
+        if job.get("kind") == "import_scans":
+            out["output"] = {
+                "expected_rcp": plan.get("expected_rcp"),
+                "expected_support_folder": plan.get("expected_support_folder"),
+            }
+            out["inputs"] = plan.get("inputs")
+            out["options"] = plan.get("options")
+        else:
+            out["task"] = plan.get("task")
+        out["warnings"] = plan.get("warnings", [])
+        out["controlled_by_this_server"] = self._controlled(job["job_id"])
         return out
+
+    # ----------------------------------------------------- tarefas internas
+    def start_task(self, kind: str, task: dict[str, Any], func: Callable[..., dict[str, Any]],
+                   warnings: list[str] | None = None) -> dict[str, Any]:
+        """Executa ``func(progress, cancel_event, log)`` numa thread, como job persistido.
+
+        ``progress(percent, message)`` atualiza o estado; ``cancel_event`` é sinalizado por
+        ``cancel_job``; ``log(texto)`` acrescenta ao log do job. ``func`` devolve o resultado.
+        """
+        with self._lock:
+            if sum(1 for j in self._tasks if self._jobs[j]["status"] in ACTIVE) >= self.max_concurrent:
+                raise errors.RecapMcpError(errors.TOO_MANY_JOBS,
+                                           f"Já há {self.max_concurrent} tarefas em andamento; aguarde ou cancele uma.")
+            job_id = _dt.datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex[:8]
+            jdir = self._job_dir(job_id)
+            jdir.mkdir(parents=True)
+            log_path = jdir / "tarefa.log"
+            log_path.write_text("", encoding="utf-8")
+            job: dict[str, Any] = {
+                "job_id": job_id, "kind": kind, "status": "running", "created_at": _now(),
+                "started_at": _now(), "finished_at": None, "pid": os.getpid(), "exit_code": None,
+                "exit_code_description": None, "command": None, "log_file": str(log_path),
+                "plan": {"task": task, "warnings": warnings or []}, "progress": {"percent": 0, "message": "iniciando"},
+                "result": None, "verification": None, "failure_reasons": [],
+            }
+            self._jobs[job_id] = job
+            cancel = threading.Event()
+            self._tasks[job_id] = cancel
+            self._persist(job)
+
+        def log_line(text: str) -> None:
+            with open(log_path, "a", encoding="utf-8") as fh:
+                fh.write(f"{_now()} {text}\n")
+
+        def progress(percent: float, message: str = "") -> None:
+            with self._lock:
+                job["progress"] = {"percent": round(float(percent), 1), "message": message}
+                self._persist(job)
+
+        def run() -> None:
+            try:
+                result = func(progress, cancel, log_line)
+                status, reasons = "succeeded", []
+            except TaskCancelled:
+                result, status = None, "cancelled"
+                reasons = ["Cancelado a pedido do cliente." if not self._shutting_down
+                           else "Encerrado porque o servidor MCP foi finalizado."]
+            except errors.RecapMcpError as exc:
+                result, status, reasons = None, "failed", [exc.message]
+            except Exception as exc:
+                log.exception("tarefa %s falhou", job_id)
+                result, status, reasons = None, "failed", [f"{type(exc).__name__}: {exc}"]
+            log_line(f"fim: {status} {'; '.join(reasons)}")
+            with self._lock:
+                job.update(status=status, finished_at=_now(), result=result, failure_reasons=reasons)
+                if status == "succeeded":
+                    job["progress"] = {"percent": 100.0, "message": "concluído"}
+                self._tasks.pop(job_id, None)
+                self._persist(job)
+
+        t = threading.Thread(target=run, daemon=True, name=f"tarefa-{job_id}")
+        self._threads[job_id] = t
+        t.start()
+        return self._public(job)
 
     def _get(self, job_id: str) -> dict[str, Any]:
         if not isinstance(job_id, str) or job_id not in self._jobs:
@@ -350,7 +429,8 @@ class JobManager:
         msgs = parse_messages("\n".join(tail))
         out["log_tail"] = tail
         out["log_size_bytes"] = size
-        out["progress_by_scan"] = summarize(msgs)["progress_by_scan"] if job["status"] in ACTIVE else None
+        if job.get("kind") == "import_scans":
+            out["progress_by_scan"] = summarize(msgs)["progress_by_scan"] if job["status"] in ACTIVE else None
         if job["started_at"]:
             end = job["finished_at"] or _now()
             try:
@@ -358,7 +438,7 @@ class JobManager:
                                                 - _dt.datetime.fromisoformat(job["started_at"])).total_seconds(), 1)
             except ValueError:
                 out["elapsed_seconds"] = None
-        if job["status"] in FINAL and job.get("plan"):
+        if job["status"] in FINAL and job.get("kind") == "import_scans" and job.get("plan"):
             out["output_now"] = {
                 "rcp_exists": Path(job["plan"]["expected_rcp"]).is_file(),
                 "support_folder_exists": Path(job["plan"]["expected_support_folder"]).is_dir(),
@@ -374,14 +454,25 @@ class JobManager:
             items = [{
                 "job_id": j["job_id"], "kind": j["kind"], "status": j["status"],
                 "created_at": j["created_at"], "finished_at": j["finished_at"],
-                "exit_code": j["exit_code"], "expected_rcp": j["plan"]["expected_rcp"],
-                "controlled_by_this_server": j["job_id"] in self._procs,
+                "exit_code": j["exit_code"], "expected_rcp": (j.get("plan") or {}).get("expected_rcp"),
+                "progress": j.get("progress"),
+                "controlled_by_this_server": self._controlled(j["job_id"]),
             } for j in jobs[:limit]]
         return {"ok": True, "count": len(items), "total": len(self._jobs), "jobs": items}
 
     def cancel(self, job_id: str) -> dict[str, Any]:
         with self._lock:
             job = self._get(job_id)
+            event = self._tasks.get(job_id)
+        if event is not None and job["status"] in ACTIVE:
+            event.set()  # a tarefa verifica o sinal entre blocos de pontos
+            t = self._threads.get(job_id)
+            if t:
+                t.join(CANCEL_WAIT_S)
+            res = self.status(job_id, log_lines=10)
+            res["note"] = "Tarefa interrompida. Arquivos parciais desta tarefa são removidos por ela mesma."
+            return res
+        with self._lock:
             proc = self._procs.get(job_id)
             if job["status"] not in ACTIVE or proc is None:
                 raise errors.RecapMcpError(
@@ -411,6 +502,12 @@ class JobManager:
         with self._lock:
             self._shutting_down = True
             procs = list(self._procs.items())
+            tasks = list(self._tasks.items())
+        for job_id, event in tasks:
+            event.set()
+            t = self._threads.get(job_id)
+            if t:
+                t.join(5)
         for job_id, proc in procs:
             if proc.poll() is None:
                 self._cancel_requested.add(job_id)

@@ -125,7 +125,11 @@ def build_server(ctx: Context | None = None) -> tuple[FastMCP, Context]:
             "Ferramentas para Autodesk ReCap no Windows. Comece por check_recap_installation. "
             "Leitura: find_projects, read_project, list_scans (metadados; nenhum ponto é devolvido). "
             "Importação: import_scans cria SEMPRE um projeto novo via DeCap.exe e devolve um job_id; "
-            "acompanhe com get_job_status. Use caminhos absolutos."
+            "acompanhe com get_job_status. Use caminhos absolutos. "
+            "Pontos: point_cloud_info, query_box, z_histogram, section, render_view, profile, nearest_points, "
+            "measure e export_subset leem os arquivos de origem (.e57/.las/.laz/.pts/.xyz, ou o .rcp que aponta "
+            "para eles), nunca devolvem a nuvem inteira e informam o sistema das coordenadas. Nuvens grandes "
+            "precisam de index_point_cloud (job) antes das consultas."
         ),
     )
 
@@ -283,6 +287,9 @@ def build_server(ctx: Context | None = None) -> tuple[FastMCP, Context]:
         return recap_app.open_project(inst.recap_exe, p, wait_for_load_seconds=wait_for_load_seconds,
                                       allow_second_instance=allow_second_instance)
 
+    from . import pc_tools
+
+    pc_tools.register(mcp, ctx, _tool)
     return mcp, ctx
 
 

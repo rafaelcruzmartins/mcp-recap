@@ -6,7 +6,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 authors = [{ name = "Rafael Cruz" }]
 dependencies = [
+    "laspy[lazrs]>=2.5",
     "mcp>=1.20,<2",
+    "numpy>=1.26",
+    "pillow>=10",
+    "pye57>=0.4",
 ]
 
 [project.scripts]

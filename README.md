@@ -30,6 +30,7 @@ Para atualizar, envie a mesma mensagem: o passo a passo faz `git pull` quando o 
 |---|---|
 | Detecta a instalação, a versão e as opções do DeCap disponíveis | Não controla a interface do ReCap (o DeCap não é uma API de automação da interface) |
 | Lê metadados de projetos `.rcp` (manifesto XML) e o cabeçalho de `.rcs` | Não lê os pontos de `.rcs` (exige o Reality Solutions SDK, distribuído pela ADN) |
+| Lê pontos dos arquivos de origem (E57, LAS/LAZ, PTS/XYZ) para resumos, cortes e imagens | Não devolve a nuvem inteira: só contagens, estatísticas, amostras limitadas e imagens |
 | Cria projetos **novos** a partir de scans, com opções do DeCap | Não edita nem sobrescreve projetos existentes |
 | Acompanha, lista e cancela as importações que ele mesmo iniciou | Não executa comandos arbitrários de shell ou código |
 | Abre um projeto existente no ReCap, quando chamado explicitamente | Não usa a Reality Capture API na nuvem; nenhum dado sai da máquina |
@@ -47,6 +48,24 @@ Para atualizar, envie a mesma mensagem: o passo a passo faz `git pull` quando o 
 | `list_jobs` | Jobs gerenciados pelo servidor |
 | `cancel_job` | Cancela um job ativo iniciado por esta instância do servidor |
 | `open_project_in_recap` | Abre um `.rcp` existente na interface do ReCap |
+
+### Leitura de pontos (resumos, recortes e imagens)
+
+Sem o Reality Solutions SDK (que não acompanha o ReCap), os pontos são lidos dos **arquivos de origem** dos scans: `.e57`, `.las`, `.laz`, `.pts` e `.xyz`. Informe o próprio arquivo ou o `.rcp`, e o servidor usa os arquivos gravados em `rawScanPath`. Os `.rcs` continuam sem ser decodificados, e scans FARO `.fls` não são lidos.
+
+| Ferramenta | Para quê |
+|---|---|
+| `point_cloud_info` | Pontos por scan, limites, atributos, unidade, sistema de coordenadas, poses scan→arquivo e estado do índice |
+| `index_point_cloud` | Indexa a nuvem em blocos (cache local). Até 3 milhões de pontos indexa na hora; acima disso vira job |
+| `query_box` | Contagem, limites reais, estatísticas de Z e amostra decimada (padrão 2.000, máximo 10.000 pontos) |
+| `z_histogram` | Histograma de Z com picos (candidatos a pisos, lajes e forros) |
+| `section` | Corte horizontal (cota + espessura) ou vertical (p1→p2 + espessura): pontos 2D decimados e PNG |
+| `render_view` | PNG ortográfico (topo, frente, fundos, laterais ou direção livre), cor por RGB, intensidade ou elevação, com eixos, escala gráfica e legenda |
+| `profile` | Perfil ao longo de uma polilinha com faixa de largura definida: Z mínimo, mediano e máximo por estaca, pontos 2D e PNG |
+| `nearest_points` / `measure` | Vizinhos de uma coordenada; distância 3D e horizontal, com encaixe opcional nos pontos da nuvem |
+| `export_subset` | Exporta caixa ou seção para `.pts`, `.xyz` ou `.e57` novo (job, sem sobrescrever) |
+
+Detalhes, limites e exemplos: [docs/pontos.md](docs/pontos.md). Toda resposta traz `coordinate_frame`, que indica se as coordenadas são do arquivo de origem e se são georreferenciadas. Quando a consulta parte de um `.rcp`, o servidor também diz se os limites lidos coincidem com os do projeto ReCap. Regiões com mais pontos que o orçamento são lidas com 1 a cada N pontos (nível de detalhe) e a resposta avisa que a contagem é estimada.
 
 Parâmetros, exemplos e códigos de erro: [docs/ferramentas.md](docs/ferramentas.md).
 
@@ -132,4 +151,9 @@ Variáveis de ambiente:
 | `RECAP_HOME` | Pasta que contém `decap.exe`, se a detecção automática falhar |
 | `RECAP_MCP_STATE_DIR` | Pasta de estado (jobs e logs). Padrão: `%LOCALAPPDATA%\mcp-recap` |
 | `RECAP_MCP_MAX_JOBS` | Importações simultâneas (1 a 8, padrão 2) |
+| `RECAP_MCP_MAX_QUERY_POINTS` | Pontos lidos por consulta antes de passar a amostrar (padrão 10 000 000, cerca de 600 MB) |
+| `RECAP_MCP_RENDER_MAX_POINTS` | Pontos usados por imagem (padrão 4 000 000) |
+| `RECAP_MCP_QUERY_TIMEOUT_S` | Tempo máximo de uma consulta, em segundos (padrão 120) |
+| `RECAP_MCP_SYNC_INDEX_POINTS` | Até quantos pontos a indexação é feita na hora, sem job (padrão 3 000 000) |
+| `RECAP_MCP_MAX_E57_EXPORT_POINTS` | Limite de pontos da exportação `.e57`, montada em memória (padrão 50 000 000) |
 | `RECAP_MCP_DECAP_LAUNCHER` | **Somente para testes automatizados**: comando JSON que substitui o `decap.exe` |

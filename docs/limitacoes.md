@@ -14,6 +14,7 @@ Outras versões do ReCap devem funcionar enquanto o DeCap mantiver `--importWith
 
 ## O que este servidor não promete
 
+* **Leitura de pontos pelo Plano B**: os pontos são lidos dos arquivos de origem (E57, LAS/LAZ, PTS/XYZ), não do `.rcs`. Projetos cuja origem foi apagada, ou que vieram de FARO `.fls` e outros formatos proprietários, não têm leitura de pontos. Veja [pontos.md](pontos.md).
 * **Leitura de pontos de `.rcs`**: o `.rcs` é um octree binário proprietário. Só o cabeçalho é lido (assinatura `ADOCT`, número de pontos, identificador, translação e limites locais). Esses campos foram conferidos contra o manifesto `.rcp` em projetos gerados pelo DeCap 27.0.1.242, mas o formato não é documentado pela Autodesk.
 * **Escrita de `.rcp`/`.rcs`**: nenhuma; projetos só são criados pelo DeCap.
 * **Reality Solutions SDK**: a [documentação oficial](https://help.autodesk.com/cloudhelp/ENU/Reality-Capture/files/Product_Overview/recap_sdk.html) informa que ele lê e grava RCP/RCS, mas é obtido pela Autodesk Developer Network (ADN Standard/Professional) e não acompanha o ReCap. Não estava disponível nesta máquina; por isso não há integração.

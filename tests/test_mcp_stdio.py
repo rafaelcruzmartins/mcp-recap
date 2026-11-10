@@ -19,7 +19,30 @@ from rcp_fixtures import ScanSpec, make_project
 EXPECTED_TOOLS = {
     "check_recap_installation", "find_projects", "read_project", "list_scans", "import_scans",
     "get_job_status", "list_jobs", "cancel_job", "open_project_in_recap",
+    # leitura de pontos (Plano B)
+    "point_cloud_info", "index_point_cloud", "query_box", "z_histogram", "section", "render_view", "profile",
+    "nearest_points", "measure", "export_subset",
 }
+
+
+def test_point_tools_return_image_over_stdio(tmp_path, fake_launcher):
+    pts = tmp_path / "nuvem ç.pts"
+    pts.write_text("4\n0 0 0 1 10 20 30\n1 0 0 1 10 20 30\n0 1 0 1 10 20 30\n1 1 1 1 10 20 30\n", encoding="ascii")
+
+    async def body(session, _):
+        r = await session.call_tool("render_view", {"source": str(pts), "view": "top", "width_px": 256})
+        assert not r.isError
+        kinds = [c.type for c in r.content]
+        assert kinds == ["text", "image"] and r.content[1].mimeType == "image/png"
+        assert r.structuredContent["points_in_region"] == 4
+        assert r.structuredContent["coordinate_frame"]["coordinates"] == "arquivo de origem"
+        q = _payload(await session.call_tool("query_box", {"source": str(pts), "sample_size": 2}))
+        assert q["points_in_region"] == 4 and q["sample"]["size"] == 2
+        bad = _error(await session.call_tool("query_box", {"source": str(pts), "sample_size": 10, "min": [1, 1, 1],
+                                                           "max": [0, 0, 0]}))
+        assert bad["error"]["code"] == "invalid_argument"
+
+    asyncio.run(_session(_params(tmp_path, fake_launcher), body))
 
 
 def _params(tmp_path, fake_launcher, extra_env=None) -> StdioServerParameters:
