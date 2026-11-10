@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Dados de nuvem de pontos e projetos ReCap nunca entram no Git
+*.rcp
+*.rcs
+*.e57
+*.las
+*.laz
+*.pts
+*.ptx
+*.xyz
+*.fls
+*.zfs
+
+# Logs e estado local
+*.log
+jobs/
+.env
